@@ -3,7 +3,6 @@ import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { connectDB } from './config/db';
-import { env } from './config/env';
 import { errorHandler, notFound } from './middleware/error';
 import { authRoutes } from './modules/auth/auth.routes';
 import { customerRoutes } from './modules/customers/customer.routes';
@@ -16,7 +15,14 @@ import { userRoutes } from './modules/users/user.routes';
 
 export const app = express();
 app.use(helmet());
-app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
+/* app.use(cors({ origin: env.CLIENT_URL, credentials: true })); */
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://abhanis.vercel.app",
+  ],
+  credentials: true,
+}));
 app.use(express.json());
 app.use(morgan('dev'));
 
