@@ -9,7 +9,6 @@ const express_1 = __importDefault(require("express"));
 const helmet_1 = __importDefault(require("helmet"));
 const morgan_1 = __importDefault(require("morgan"));
 const db_1 = require("./config/db");
-const env_1 = require("./config/env");
 const error_1 = require("./middleware/error");
 const auth_routes_1 = require("./modules/auth/auth.routes");
 const customer_routes_1 = require("./modules/customers/customer.routes");
@@ -21,7 +20,14 @@ const subscription_routes_1 = require("./modules/subscriptions/subscription.rout
 const user_routes_1 = require("./modules/users/user.routes");
 exports.app = (0, express_1.default)();
 exports.app.use((0, helmet_1.default)());
-exports.app.use((0, cors_1.default)({ origin: env_1.env.CLIENT_URL, credentials: true }));
+/* app.use(cors({ origin: env.CLIENT_URL, credentials: true })); */
+exports.app.use((0, cors_1.default)({
+    origin: [
+        "http://localhost:3000",
+        "https://abhanis.vercel.app",
+    ],
+    credentials: true,
+}));
 exports.app.use(express_1.default.json());
 exports.app.use((0, morgan_1.default)('dev'));
 exports.app.get('/health', (_req, res) => res.json({ ok: true }));

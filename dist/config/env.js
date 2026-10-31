@@ -6,8 +6,8 @@ const zod_1 = require("zod");
 const schema = zod_1.z.object({
     NODE_ENV: zod_1.z.string().default('development'),
     PORT: zod_1.z.coerce.number().default(5000),
-    CLIENT_URL: zod_1.z.string().default('http://localhost:3000'),
-    API_URL: zod_1.z.string().default('http://localhost:5000'),
+    CLIENT_URL: zod_1.z.string().url().default('http://localhost:3000'),
+    API_URL: zod_1.z.string().url().default('http://localhost:5000'),
     MONGODB_URI: zod_1.z.string().min(1),
     JWT_ACCESS_SECRET: zod_1.z.string().min(16),
     JWT_REFRESH_SECRET: zod_1.z.string().min(16),
