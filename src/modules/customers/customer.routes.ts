@@ -4,12 +4,13 @@ import { dateRange } from '../../common/dateRange';
 import { authenticate, authorize, getStoreId, requireModule } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import { AppError, asyncHandler } from '../../utils/errors';
+import { resolveImage } from '../images/image.service';
 import { notify } from '../notifications/notification.service';
 import { Store } from '../stores/store.model';
 import { Customer, LedgerEntry } from './customer.model';
-import { customerSummary, postLedger, toWhatsAppNumber } from './customer.service';
+import { assertPhoneFree, customerSummary, findCustomerByPhone, normalizePhone, postLedger, toWhatsAppNumber } from './customer.service';
 
-const base = z.object({ name: z.string().min(1), phone: z.string().optional(), address: z.string().optional(), note: z.string().optional() });
+const base = z.object({ name: z.string().trim().min(1), phone: z.string().trim().optional(), address: z.string().optional(), note: z.string().optional(), imageToken: z.string().max(64).nullable().optional() });
 
 export const customerRoutes = Router();
 customerRoutes.use(authenticate, requireModule('customers'));
@@ -23,8 +24,18 @@ customerRoutes.get('/', asyncHandler(async (req, res) => {
   res.json(await Customer.find(filter).sort('name').limit(200));
 }));
 
+// Live duplicate check used by the Add/Edit form: ?phone=&exclude=<customerId>
+customerRoutes.get('/check', asyncHandler(async (req, res) => {
+  const { phone, exclude } = req.query as Record<string, string>;
+  const dup = await findCustomerByPhone(getStoreId(req), phone, exclude);
+  res.json({ phone: dup ? { id: String(dup._id), name: dup.name, phone: dup.phone, dueBalance: dup.dueBalance } : null });
+}));
+
 customerRoutes.post('/', canWrite, validate(base), asyncHandler(async (req, res) => {
-  res.status(201).json(await Customer.create({ ...req.body, storeId: getStoreId(req) }));
+  const storeId = getStoreId(req);
+  await assertPhoneFree(storeId, req.body.phone);
+  const imageToken = await resolveImage(storeId, 'customer', req.body.imageToken, undefined);
+  res.status(201).json(await Customer.create({ ...req.body, storeId, phoneNormalized: normalizePhone(req.body.phone), imageToken: imageToken ?? undefined }));
 }));
 
 customerRoutes.get('/:id', asyncHandler(async (req, res) => {
@@ -35,15 +46,19 @@ customerRoutes.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 customerRoutes.patch('/:id', canWrite, validate(base.partial()), asyncHandler(async (req, res) => {
-  const c = await Customer.findOneAndUpdate({ _id: req.params.id, storeId: getStoreId(req) }, req.body, { new: true });
-  if (!c) throw new AppError(404, 'Customer not found');
-  res.json(c);
+  const storeId = getStoreId(req);
+  if (req.body.phone !== undefined) await assertPhoneFree(storeId, req.body.phone, req.params.id);
+  const existing = await Customer.findOne({ _id: req.params.id, storeId });
+  if (!existing) throw new AppError(404, 'Customer not found', 'NOT_FOUND');
+  const update: Record<string, unknown> = { ...req.body, ...(req.body.phone !== undefined && { phoneNormalized: normalizePhone(req.body.phone) ?? null }) };
+  if (req.body.imageToken !== undefined) update.imageToken = await resolveImage(storeId, 'customer', req.body.imageToken, existing.imageToken);
+  res.json(await Customer.findOneAndUpdate({ _id: existing._id }, update, { new: true }));
 }));
 
 customerRoutes.delete('/:id', authorize('superuser', 'admin', 'manager'), asyncHandler(async (req, res) => {
   const c = await Customer.findOne({ _id: req.params.id, storeId: getStoreId(req) });
   if (!c) throw new AppError(404, 'Customer not found');
-  if (c.dueBalance > 0) throw new AppError(409, 'Customer still has outstanding dues');
+  if (c.dueBalance > 0) throw new AppError(409, 'Customer still has outstanding dues', 'CUSTOMER_HAS_DUES');
   c.isActive = false;
   await c.save();
   res.json({ message: 'Customer deleted' });
@@ -67,9 +82,9 @@ customerRoutes.post('/:id/payments', canWrite, validate(z.object({ amount: z.num
   const storeId = getStoreId(req);
   const c = await Customer.findOne({ _id: req.params.id, storeId });
   if (!c) throw new AppError(404, 'Customer not found');
-  if (req.body.amount > c.dueBalance) throw new AppError(400, `Amount exceeds outstanding due (${c.dueBalance})`);
+  if (req.body.amount > c.dueBalance) throw new AppError(400, `Amount exceeds outstanding due (${c.dueBalance})`, 'AMOUNT_EXCEEDS_DUE', { due: c.dueBalance });
   const updated = await postLedger({ storeId, customerId: c._id, type: 'payment', amount: req.body.amount, dueDelta: -req.body.amount, note: req.body.note, userId: req.user!.id });
-  await notify(storeId, 'payment_received', `Payment from ${c.name}`, `৳${req.body.amount} received. Remaining due: ৳${updated.dueBalance}`);
+  await notify(storeId, 'payment_received', `Payment from ${c.name}`, `৳${req.body.amount} received. Remaining due: ৳${updated.dueBalance}`, undefined, { code: 'payment_received', params: { name: c.name, amount: req.body.amount, due: updated.dueBalance } });
   res.json(updated);
 }));
 
@@ -78,8 +93,8 @@ customerRoutes.get('/:id/whatsapp-dues', asyncHandler(async (req, res) => {
   const storeId = getStoreId(req);
   const [c, store] = await Promise.all([Customer.findOne({ _id: req.params.id, storeId }), Store.findById(storeId)]);
   if (!c) throw new AppError(404, 'Customer not found');
-  if (!c.phone) throw new AppError(400, 'Customer has no phone number');
-  if (c.dueBalance <= 0) throw new AppError(400, 'Customer has no outstanding dues');
+  if (!c.phone) throw new AppError(400, 'Customer has no phone number', 'NO_PHONE');
+  if (c.dueBalance <= 0) throw new AppError(400, 'Customer has no outstanding dues', 'NO_DUES');
   const message = `Hello ${c.name},\nYour outstanding due at ${store?.name} is ৳${c.dueBalance}.\nPlease pay at your earliest convenience. Thank you!`;
   res.json({ message, url: `https://wa.me/${toWhatsAppNumber(c.phone)}?text=${encodeURIComponent(message)}` });
 }));

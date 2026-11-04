@@ -7,6 +7,8 @@ const schema = new Schema(
     title: { type: String, required: true },
     message: String,
     link: String,
+    code: String, // lets the web app translate the message
+    params: Schema.Types.Mixed,
     isRead: { type: Boolean, default: false },
   },
   { timestamps: true },

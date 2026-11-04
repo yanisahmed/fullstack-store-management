@@ -4,8 +4,8 @@ import { z } from 'zod';
 const schema = z.object({
   NODE_ENV: z.string().default('development'),
   PORT: z.coerce.number().default(5000),
-  CLIENT_URL: z.string().default('https://abhanis.vercel.app'),
-  API_URL: z.string().default('https://fullstack-store-management.onrender.com'),
+  CLIENT_URL: z.string().default('http://localhost:3000'),
+  API_URL: z.string().default('http://localhost:5000'),
   MONGODB_URI: z.string().min(1),
   JWT_ACCESS_SECRET: z.string().min(16),
   JWT_REFRESH_SECRET: z.string().min(16),

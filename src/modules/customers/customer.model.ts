@@ -5,8 +5,10 @@ const customerSchema = new Schema(
     storeId: { type: Types.ObjectId, ref: 'Store', required: true, index: true },
     name: { type: String, required: true, trim: true },
     phone: { type: String, trim: true },
+    phoneNormalized: { type: String, index: true }, // digits only, 01XXXXXXXXX form, used for duplicate detection
     address: String,
     note: String,
+    imageToken: String,
     dueBalance: { type: Number, default: 0 }, // what the customer currently owes
     isActive: { type: Boolean, default: true },
   },

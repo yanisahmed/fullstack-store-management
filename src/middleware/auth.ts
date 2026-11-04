@@ -17,15 +17,15 @@ declare global {
 export async function authenticate(req: Request, _res: Response, next: NextFunction) {
   try {
     const header = req.headers.authorization;
-    if (!header?.startsWith('Bearer ')) throw new AppError(401, 'Authentication required');
+    if (!header?.startsWith('Bearer ')) throw new AppError(401, 'Authentication required', 'UNAUTHENTICATED');
     let payload;
     try {
       payload = verifyAccess(header.slice(7));
     } catch {
-      throw new AppError(401, 'Invalid or expired token');
+      throw new AppError(401, 'Invalid or expired token', 'INVALID_TOKEN');
     }
     const user = await User.findById(payload.sub).select('roles storeId isActive');
-    if (!user || !user.isActive) throw new AppError(401, 'Account disabled or not found');
+    if (!user || !user.isActive) throw new AppError(401, 'Account disabled or not found', 'ACCOUNT_DISABLED');
     req.user = { id: String(user._id), roles: user.roles as Role[], storeId: user.storeId ? String(user.storeId) : undefined };
     next();
   } catch (e) {
@@ -36,7 +36,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
 export const authorize =
   (...allowed: Role[]) =>
   (req: Request, _res: Response, next: NextFunction) => {
-    if (!req.user?.roles.some((r) => allowed.includes(r))) return next(new AppError(403, 'Insufficient permissions'));
+    if (!req.user?.roles.some((r) => allowed.includes(r))) return next(new AppError(403, 'Insufficient permissions', 'FORBIDDEN'));
     next();
   };
 
@@ -53,10 +53,10 @@ export const requireModule =
     try {
       if (req.user?.roles.includes('superuser')) return next();
       const store = await Store.findById(getStoreId(req));
-      if (!store || store.status !== 'active') throw new AppError(403, 'Store is suspended');
+      if (!store || store.status !== 'active') throw new AppError(403, 'Store is suspended', 'STORE_SUSPENDED');
       const expired = !store.subscription?.expiresAt || store.subscription.expiresAt < new Date();
-      if (expired) throw new AppError(402, 'Subscription expired. Please renew.');
-      if (!store.enabledModules.includes(mod)) throw new AppError(403, `The "${mod}" module is not part of your subscription`);
+      if (expired) throw new AppError(402, 'Subscription expired. Please renew.', 'SUBSCRIPTION_EXPIRED');
+      if (!store.enabledModules.includes(mod)) throw new AppError(403, `The "${mod}" module is not part of your subscription`, 'MODULE_DISABLED', { module: mod });
       next();
     } catch (e) {
       next(e);

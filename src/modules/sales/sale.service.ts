@@ -37,7 +37,7 @@ export async function createSale(storeId: string, userId: string, input: SaleInp
   const paidAmount = input.paidAmount ?? total;
   if (paidAmount > total + 0.001) throw new AppError(400, 'Paid amount cannot exceed total');
   const dueAmount = round2(Math.max(total - paidAmount, 0));
-  if (dueAmount > 0 && !customer) throw new AppError(400, 'Select a customer to sell on due');
+  if (dueAmount > 0 && !customer) throw new AppError(400, 'Select a customer to sell on due', 'CUSTOMER_REQUIRED_FOR_DUE');
 
   // 3. Reserve stock atomically; roll back on any failure
   const reserved: typeof lines = [];
@@ -46,7 +46,7 @@ export async function createSale(storeId: string, userId: string, input: SaleInp
   try {
     for (const l of lines) {
       const p = await Product.findOneAndUpdate({ _id: l.productId, storeId, stock: { $gte: l.quantity - 0.0005 } }, { $inc: { stock: -l.quantity } }, { new: true });
-      if (!p) throw new AppError(409, `Insufficient stock for ${l.name}`);
+      if (!p) throw new AppError(409, `Insufficient stock for ${l.name}`, 'INSUFFICIENT_STOCK', { name: l.name });
       reserved.push(l);
       const stock = await cleanStock(p);
       after.set(String(p._id), stock);
@@ -65,9 +65,9 @@ export async function createSale(storeId: string, userId: string, input: SaleInp
   if (customer) {
     await postLedger({ storeId, customerId: customer._id, type: 'sale', amount: total, dueDelta: total, saleId: sale._id, note: invoiceNo, userId });
     if (paidAmount > 0) await postLedger({ storeId, customerId: customer._id, type: 'payment', amount: paidAmount, dueDelta: -paidAmount, saleId: sale._id, note: `Paid at ${invoiceNo}`, userId });
-    if (dueAmount > 0) await notify(storeId, 'customer_due', `Due added: ${customer.name}`, `৳${dueAmount} unpaid on ${invoiceNo}`, `/customers/${customer._id}`);
+    if (dueAmount > 0) await notify(storeId, 'customer_due', `Due added: ${customer.name}`, `৳${dueAmount} unpaid on ${invoiceNo}`, `/customers/${customer._id}`, { code: 'customer_due', params: { name: customer.name, amount: dueAmount, invoice: invoiceNo } });
   }
-  for (const p of lowStock) await notify(storeId, 'low_stock', `Low stock: ${p.name}`, `Only ${p.stock} ${p.unit} left`);
+  for (const p of lowStock) await notify(storeId, 'low_stock', `Low stock: ${p.name}`, `Only ${p.stock} ${p.unit} left`, undefined, { code: 'low_stock', params: { name: p.name, stock: p.stock, unit: p.unit } });
 
   return sale;
 }

@@ -24,7 +24,7 @@ authRoutes.post('/register-store', validate(z.object({
   password: z.string().min(8),
 })), asyncHandler(async (req, res) => {
   const { storeName, name, email, phone, password } = req.body;
-  if (await User.exists({ email: email.toLowerCase() })) throw new AppError(409, 'Email already registered');
+  if (await User.exists({ email: email.toLowerCase() })) throw new AppError(409, 'Email already registered', 'EMAIL_EXISTS');
   const now = new Date();
   const store = await Store.create({
     name: storeName, phone,
@@ -37,7 +37,7 @@ authRoutes.post('/register-store', validate(z.object({
 
 authRoutes.post('/login', validate(z.object({ email: z.string().email(), password: z.string() })), asyncHandler(async (req, res) => {
   const user = await User.findOne({ email: req.body.email.toLowerCase() }).select('+passwordHash');
-  if (!user || !user.isActive || !(await bcrypt.compare(req.body.password, user.passwordHash))) throw new AppError(401, 'Invalid email or password');
+  if (!user || !user.isActive || !(await bcrypt.compare(req.body.password, user.passwordHash))) throw new AppError(401, 'Invalid email or password', 'INVALID_CREDENTIALS');
   res.json({ ...tokens(String(user._id)), user: { id: user._id, name: user.name, email: user.email, roles: user.roles, storeId: user.storeId } });
 }));
 

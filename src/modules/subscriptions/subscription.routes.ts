@@ -43,7 +43,7 @@ subscriptionRoutes.get('/bkash/callback', asyncHandler(async (req, res) => {
     store.enabledModules = plan.modules as any;
     store.subscription = { planId: plan._id, status: 'active', startsAt: now, expiresAt: new Date(startFrom.getTime() + plan.durationDays * 864e5) } as any;
     await store.save();
-    await notify(store._id, 'subscription', 'Subscription activated', `${plan.name} is active until ${store.subscription!.expiresAt!.toDateString()}`);
+    await notify(store._id, 'subscription', 'Subscription activated', `${plan.name} is active until ${store.subscription!.expiresAt!.toDateString()}`, undefined, { code: 'subscription', params: { plan: plan.name, date: store.subscription!.expiresAt!.toISOString() } });
   }
   back('success');
 }));

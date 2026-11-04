@@ -6,6 +6,7 @@ const productSchema = new Schema(
     name: { type: String, required: true, trim: true },
     sku: { type: String, required: true, trim: true, uppercase: true },
     barcode: String,
+    imageToken: String, // points at an Image (see modules/images)
     category: { type: String, trim: true, index: true },
     unit: { type: String, enum: ['pcs', 'kg'], default: 'pcs' },
     costPrice: { type: Number, required: true, min: 0 },
